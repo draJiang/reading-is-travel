@@ -26,7 +26,7 @@ export async function verifyGoogleToken(token, clientId, now = Date.now()) {
   try { header = decodePart(parts[0]); claims = decodePart(parts[1]); }
   catch { throw new Error('Invalid Google credential.'); }
   if (header.alg !== 'RS256' || !header.kid || !['accounts.google.com', 'https://accounts.google.com'].includes(claims.iss)
-    || claims.aud !== clientId || typeof claims.sub !== 'string' || !/^\d{1,64}$/.test(claims.sub)
+    || claims.aud !== clientId?.trim() || typeof claims.sub !== 'string' || !/^[A-Za-z0-9_-]{1,255}$/.test(claims.sub)
     || typeof claims.exp !== 'number' || claims.exp * 1000 <= now
     || typeof claims.iat !== 'number' || claims.iat * 1000 > now + 60000 || claims.iat > claims.exp) throw new Error('Invalid or expired Google credential.');
   const key = (await googleKeys()).find(item => item.kid === header.kid && item.kty === 'RSA' && (!item.alg || item.alg === 'RS256'));

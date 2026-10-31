@@ -16,6 +16,7 @@ test('verifies signature, audience, expiry and Google subject', async t => {
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ keys: [{ ...jwk, kid: 'test' }] }), headers: new Headers({ 'cache-control': 'max-age=300' }) });
   t.after(() => { globalThis.fetch = oldFetch; });
   assert.deepEqual(await verifyGoogleToken(token(claims), 'client-id'), { id: 'google-123456', name: 'Reader' });
+  assert.deepEqual(await verifyGoogleToken(token({ ...claims, sub: 'aBc_123-XyZ' }), 'client-id\n'), { id: 'google-aBc_123-XyZ', name: 'Reader' });
   await assert.rejects(verifyGoogleToken(token({ ...claims, aud: 'other' }), 'client-id'));
   await assert.rejects(verifyGoogleToken(token({ ...claims, exp: 0 }), 'client-id'));
   const other = generateKeyPairSync('rsa', { modulusLength: 2048 });
