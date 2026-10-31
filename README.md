@@ -1,6 +1,6 @@
 # Reading is Travel
 
-A small public reading community. The static frontend and same-origin API run on Vercel; posts and images live on a separate VPS (SQLite + filesystem). The [GitHub repository](https://github.com/draJiang/reading-is-travel) holds code, **not new posts**. Demo posts only appear on localhost.
+A small public reading community. The static frontend and same-origin API run on Vercel; posts and images live on a separate VPS (SQLite + filesystem). Demo posts only appear on localhost.
 
 ## Requirements
 
@@ -59,10 +59,10 @@ Deploy with the default framework preset (Other), root directory `.`, no build c
 - `STORAGE_SERVICE_URL=https://storage.example.com:8443` (an exact origin without a trailing slash)
 - `STORAGE_SHARED_SECRET`: **the same secret** as on the VPS. Do not expose it with a `NEXT_PUBLIC_` or `VITE_` prefix.
 
-Remove `GITHUB_TOKEN` from Vercel after successful cutover. Redeploy after changing environment variables. Login/session endpoints remain on Vercel; all post/image operations use the VPS. This MVP **does not migrate** old GitHub test posts. Old Git commits and forks can still retain that test data; clean those separately if necessary. Stop old GitHub-backed writes before cutover to avoid split data. Do not configure Preview and Production with separate `SESSION_SECRET` values against the same data if they need to share authorship.
+Redeploy after changing environment variables. Login/session endpoints remain on Vercel; all post/image operations use the VPS. Test posts from the previous storage are not migrated. Do not configure Preview and Production with separate `SESSION_SECRET` values against the same data if they need to share authorship.
 
 For local frontend-only preview, run `npm start` and open `http://127.0.0.1:3000` to see 20 fictional posts without configuring the VPS. To test real local writes, set `STORAGE_DATA_DIR` and `STORAGE_SHARED_SECRET`, start the storage service, then set `STORAGE_SERVICE_URL=http://127.0.0.1:3001` on the local frontend API, plus `GOOGLE_CLIENT_ID` and `SESSION_SECRET`. Local HTTP is permitted only for that loopback URL and is rejected on Vercel.
 
 ## Backups and deletion
 
-Keep a scheduled off-VPS backup of both SQLite and the `images` directory, with a documented retention period and a tested restore. Use SQLite's online backup facility or safely stop writers while copying the database; do not copy only the main database while WAL writes are active. Keep secrets and backups out of the public repository. Deleting a post removes its server-side image and metadata, but cannot retrieve copies already downloaded by others or immediately erase retained backups. Existing posts from the former GitHub storage remain in Git history unless separately removed through a coordinated history rewrite.
+Keep a scheduled off-VPS backup of both SQLite and the `images` directory, with a documented retention period and a tested restore. Use SQLite's online backup facility or safely stop writers while copying the database; do not copy only the main database while WAL writes are active. Keep secrets and backups out of version control. Deleting a post removes its server-side image and metadata, but cannot retrieve copies already downloaded by others or immediately erase retained backups.

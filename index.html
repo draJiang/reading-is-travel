@@ -12,7 +12,6 @@
   <header class="site-header">
     <nav aria-label="Main">
       <a class="wordmark" href="#/square">Reading is Travel</a>
-      <a href="#/square" id="square-link">Square</a>
       <span class="nav-space"></span>
       <span id="account"></span>
       <button id="publish-button" type="button">Share a reading</button>
@@ -22,8 +21,7 @@
   <main id="main" tabindex="-1"></main>
 
   <footer>
-    <p>Between the pages, there are mountains and rivers. <span aria-hidden="true">↗</span></p>
-    <small>Google sign-in · Readings are stored on our server · <a href="https://github.com/draJiang/reading-is-travel" target="_blank" rel="noopener noreferrer">Open-source code on GitHub</a>.</small>
+    <p>Between the pages, there are mountains and rivers.</p>
   </footer>
   <p id="notice" role="status" aria-live="polite" hidden></p>
 
@@ -50,13 +48,6 @@
       <p class="form-error" role="alert" id="publish-error"></p>
       <button type="submit" id="submit-post">Publish</button>
     </form>
-  </dialog>
-
-  <dialog id="publish-confirm-dialog" aria-labelledby="publish-confirm-title">
-    <div class="dialog-heading"><h2 id="publish-confirm-title">Publish this reading?</h2><button type="button" data-close aria-label="Close confirmation">Close</button></div>
-    <p>Your text, display name and image will be publicly visible. Others may copy them even if you delete the post later. Do not upload private information.</p>
-    <p class="form-error" role="alert" id="publish-confirm-error"></p>
-    <div class="actions"><button type="button" id="publish-back">Go back</button><button type="button" id="confirm-publish">Confirm publish</button></div>
   </dialog>
 
   <dialog id="detail-dialog" aria-labelledby="detail-title">

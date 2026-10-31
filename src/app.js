@@ -1,9 +1,10 @@
 import { cities, getCity, cityLabel, findCity, projectCity } from './cities.js';
 import { demoPosts, demoUsers } from './demo.js';
+import { buildExport } from './export.js';
 
 const $ = selector => document.querySelector(selector);
 const main = $('#main');
-const dialogs = { login: $('#login-dialog'), publish: $('#publish-dialog'), confirm: $('#publish-confirm-dialog'), detail: $('#detail-dialog'), delete: $('#delete-dialog') };
+const dialogs = { login: $('#login-dialog'), publish: $('#publish-dialog'), detail: $('#detail-dialog'), delete: $('#delete-dialog') };
 let state;
 let pendingDelete = null;
 let returnFocus = null;
@@ -12,7 +13,6 @@ let previewUrl = null;
 let lastImage = null;
 let noticeTimer;
 let publishBusy = false;
-let pendingPublish = null;
 let sessionUser = null;
 let googleReady = false;
 let shared = { users: [], posts: [] };
@@ -48,16 +48,12 @@ function openDialog(dialog) {
 
 for (const dialog of Object.values(dialogs)) {
   dialog.addEventListener('click', event => {
-    if ((dialog === dialogs.publish || dialog === dialogs.confirm) && publishBusy) return;
+    if (dialog === dialogs.publish && publishBusy) return;
     if (event.target === dialog || event.target.closest('[data-close]')) dialog.close();
   });
-  dialog.addEventListener('cancel', event => { if ((dialog === dialogs.publish || dialog === dialogs.confirm) && publishBusy) event.preventDefault(); });
+  dialog.addEventListener('cancel', event => { if (dialog === dialogs.publish && publishBusy) event.preventDefault(); });
   dialog.addEventListener('close', () => {
-    if (dialog === dialogs.publish && !dialogs.confirm.open && !pendingPublish) clearPreview();
-    if (dialog === dialogs.confirm && !publishBusy && pendingPublish && !dialogs.publish.open) {
-      pendingPublish = null;
-      clearPreview();
-    }
+    if (dialog === dialogs.publish) clearPreview();
     if (dialog === dialogs.login) pendingLoginAction = null;
     if (returnFocus?.isConnected) returnFocus.focus();
     returnFocus = null;
@@ -111,8 +107,6 @@ function route() {
 function renderRoute() {
   if (!state) return;
   const current = route();
-  $('#square-link').removeAttribute('aria-current');
-  if (current.page === 'square') $('#square-link').setAttribute('aria-current', 'page');
   if (current.page === 'user') renderUser(current.userId);
   else if (current.page === 'map') renderMap(current.cityId);
   else renderSquare();
@@ -164,8 +158,31 @@ function renderUser(id) {
     return;
   }
   const posts = visiblePosts().filter(post => post.authorId === id);
+  const profile = el('section', { className: 'profile' }, el('h1', { text: user.name }),
+    el('p', { text: `${posts.length} reading${posts.length === 1 ? '' : 's'} · ${id === state.currentUserId ? 'Your profile' : 'Author profile'}` }));
+  if (id === state.currentUserId) {
+    const button = el('button', { type: 'button', text: 'Export my readings' });
+    button.addEventListener('click', async () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = 'Exporting...';
+      try {
+        const ownPosts = state.posts.filter(post => post.authorId === id);
+        const archive = await buildExport(ownPosts);
+        const url = URL.createObjectURL(archive);
+        const link = el('a', { href: url, download: `reading-is-travel-${new Date().toISOString().slice(0, 10)}.zip` });
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        notice('Export downloaded. Unzip it to preview the Markdown with its images.');
+      } catch (error) { notice(error.message || 'Export failed. Please try again.'); }
+      finally { button.disabled = false; button.textContent = 'Export my readings'; }
+    });
+    profile.append(button);
+  }
   main.replaceChildren(
-    el('section', { className: 'profile' }, el('h1', { text: user.name }), el('p', { text: `${posts.length} reading${posts.length === 1 ? '' : 's'} · ${id === state.currentUserId ? 'Your profile' : 'Author profile'}` })),
+    profile,
     posts.length ? cards(posts) : empty('No readings yet', 'This author has not posted anything.'));
 }
 
@@ -369,42 +386,18 @@ $('#publish-form').addEventListener('submit', async event => {
     const file = $('#post-image').files[0];
     if (!file || file !== lastImage || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 15 * 1024 * 1024) throw new Error('Choose a JPG, PNG, or WebP image up to 15 MB.');
     const image = await compressImage(file);
-    pendingPublish = { image, text: $('#post-text').value, cityId: city?.id || null };
-    publishBusy = false;
-    dialogs.publish.close();
-    requestAnimationFrame(() => openDialog(dialogs.confirm));
-  } catch (error) { $('#publish-error').textContent = error.message; }
-  finally { button.disabled = false; publishBusy = false; }
-});
-
-function backToPublish() {
-  pendingPublish = null;
-  dialogs.confirm.close();
-  requestAnimationFrame(() => openDialog(dialogs.publish));
-}
-
-$('#publish-back').addEventListener('click', backToPublish);
-$('#confirm-publish').addEventListener('click', async () => {
-  if (!pendingPublish || publishBusy) return;
-  const button = $('#confirm-publish');
-  publishBusy = true;
-  button.disabled = true;
-  $('#publish-confirm-error').textContent = '';
-  try {
-    const response = await fetch('/api/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pendingPublish) });
+    const response = await fetch('/api/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image, text: $('#post-text').value, cityId: city?.id || null }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Publishing failed.');
     shared.posts.unshift(result.post);
     shared.users = shared.users.filter(user => user.id !== sessionUser.id).concat(sessionUser);
-    pendingPublish = null;
     $('#publish-form').reset();
     $('#text-count').textContent = '0 / 6000';
-    dialogs.confirm.close();
-    clearPreview();
+    dialogs.publish.close();
     navigate('#/square');
     refresh();
     notice('Your reading is now public.');
-  } catch (error) { $('#publish-confirm-error').textContent = error.message; }
+  } catch (error) { $('#publish-error').textContent = error.message; }
   finally { button.disabled = false; publishBusy = false; }
 });
 
