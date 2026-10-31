@@ -1,6 +1,7 @@
 import { cities, getCity, cityLabel, findCity, projectCity } from './cities.js';
 import { demoPosts, demoUsers } from './demo.js';
 import { buildExport } from './export.js';
+import { openDrafts, draftOperation } from './draft.js';
 
 const $ = selector => document.querySelector(selector);
 const main = $('#main');
@@ -13,6 +14,17 @@ let previewUrl = null;
 let lastImage = null;
 let noticeTimer;
 let publishBusy = false;
+let draftDb;
+let draftUserId = null;
+let draftTimer;
+let draftWrites = Promise.resolve();
+let draftLoading = false;
+let draftRevision = 0;
+let draftOpenToken = 0;
+let draftPendingWrites = 0;
+let draftSaveFailed = false;
+const memoryDrafts = new Map();
+const draftWarnings = new Set();
 let sessionUser = null;
 let googleReady = false;
 let shared = { users: [], posts: [] };
@@ -46,6 +58,119 @@ function openDialog(dialog) {
   dialog.showModal();
 }
 
+function draftStatus(message) { $('#draft-status').textContent = message; }
+
+function currentDraft() {
+  return { text: $('#post-text').value, city: $('#post-city').value, image: lastImage };
+}
+
+const blankDraft = draft => !draft.text && !draft.city && !draft.image;
+
+function queueDraft(userId, draft) {
+  if (!userId) return;
+  if (blankDraft(draft)) memoryDrafts.delete(userId);
+  else memoryDrafts.set(userId, draft);
+  const token = draftOpenToken;
+  draftPendingWrites++;
+  const write = draftWrites.catch(() => {}).then(async () => {
+    draftDb ||= await openDrafts();
+    return blankDraft(draft) ? draftOperation(draftDb, 'delete', userId) : draftOperation(draftDb, 'put', userId, draft);
+  });
+  draftWrites = write;
+  write.then(() => {
+    draftWarnings.delete(userId);
+    draftSaveFailed = draftWarnings.size > 0;
+    if (draftOpenToken === token && draftUserId === userId && !draftTimer) draftStatus('Draft saved on this device.');
+  })
+    .catch(() => {
+      draftWarnings.add(userId);
+      draftSaveFailed = true;
+      if (draftOpenToken === token && draftUserId === userId) draftStatus('Could not save draft on this device. Keep this page open or copy your text.');
+      else notice('Could not save the draft on this device.');
+    }).finally(() => { draftPendingWrites--; });
+}
+
+function saveDraft() {
+  if (!draftUserId) return;
+  if (blankDraft(currentDraft()) && !draftDb && !memoryDrafts.has(draftUserId)) return;
+  draftRevision++;
+  queueDraft(draftUserId, currentDraft());
+}
+
+function scheduleDraftSave() {
+  if (!draftUserId) return;
+  draftRevision++;
+  if (blankDraft(currentDraft())) memoryDrafts.delete(draftUserId);
+  else memoryDrafts.set(draftUserId, currentDraft());
+  clearTimeout(draftTimer);
+  draftStatus(draftWarnings.has(draftUserId) ? 'Local storage is unavailable. Keep this page open or copy your text.' : 'Saving draft...');
+  draftTimer = setTimeout(() => { draftTimer = null; saveDraft(); }, 400);
+}
+
+async function loadDraft(userId) {
+  clearTimeout(draftTimer);
+  draftTimer = null;
+  draftUserId = userId;
+  draftLoading = false;
+  const token = ++draftOpenToken;
+  const revision = ++draftRevision;
+  const form = $('#publish-form');
+  const button = $('#submit-post');
+  if (userId) draftLoading = true;
+  button.disabled = Boolean(userId);
+  if (userId && draftWarnings.has(userId)) draftSaveFailed = true;
+  form.reset();
+  clearPreview();
+  $('#text-count').textContent = '0 / 6000';
+  draftStatus('');
+  if (!userId) return;
+  try {
+    let draft = memoryDrafts.get(userId);
+    if (!draft) {
+      const db = draftDb || await openDrafts();
+      draftDb = db;
+      await draftWrites.catch(() => {});
+      draft = memoryDrafts.get(userId) || await draftOperation(db, 'get', userId);
+    }
+    if (draftOpenToken !== token || draftUserId !== userId || !dialogs.publish.open) return;
+    if (draftRevision !== revision) { saveDraft(); return; }
+    if (!draft) return;
+    const existingImage = draft.image instanceof Blob && ['image/jpeg', 'image/png', 'image/webp'].includes(draft.image.type) && draft.image.size <= 15 * 1024 * 1024;
+    $('#post-text').value = typeof draft.text === 'string' ? draft.text : '';
+    $('#post-city').value = typeof draft.city === 'string' ? draft.city : '';
+    $('#text-count').textContent = `${$('#post-text').value.length} / 6000`;
+    if (existingImage) {
+      try {
+        const file = draft.image instanceof File ? draft.image : new File([draft.image], 'reading.jpg', { type: draft.image.type });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        $('#post-image').files = transfer.files;
+        lastImage = file;
+        previewUrl = URL.createObjectURL(file);
+        $('#image-preview').src = previewUrl;
+        $('#image-preview').hidden = false;
+      } catch {
+        draftStatus('Text restored, but this browser could not restore the image. Please choose it again.');
+        return;
+      }
+    }
+    draftStatus(!existingImage && draft.image ? 'Text restored, but the image needs to be chosen again.'
+      : draftWarnings.has(userId) ? 'Draft kept in this page only. Local storage is unavailable.' : 'Draft restored from this device.');
+  } catch {
+    if (draftOpenToken === token) {
+      draftWarnings.add(userId);
+      draftSaveFailed = true;
+      draftStatus('Local drafts are unavailable. Copy your text before leaving.');
+    }
+  }
+  finally {
+    if (draftOpenToken === token) {
+      draftLoading = false;
+      button.disabled = false;
+    }
+  }
+}
+
 for (const dialog of Object.values(dialogs)) {
   dialog.addEventListener('click', event => {
     if (dialog === dialogs.publish && publishBusy) return;
@@ -53,12 +178,40 @@ for (const dialog of Object.values(dialogs)) {
   });
   dialog.addEventListener('cancel', event => { if (dialog === dialogs.publish && publishBusy) event.preventDefault(); });
   dialog.addEventListener('close', () => {
-    if (dialog === dialogs.publish) clearPreview();
+    if (dialog === dialogs.publish) {
+      clearTimeout(draftTimer);
+      draftTimer = null;
+      if (!draftLoading) saveDraft();
+      draftUserId = null;
+      draftRevision++;
+      draftOpenToken++;
+      $('#submit-post').disabled = false;
+      clearPreview();
+    }
     if (dialog === dialogs.login) pendingLoginAction = null;
     if (returnFocus?.isConnected) returnFocus.focus();
     returnFocus = null;
   });
 }
+
+window.addEventListener('pagehide', () => {
+  clearTimeout(draftTimer);
+  draftTimer = null;
+  if (dialogs.publish.open && !draftLoading) saveDraft();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && dialogs.publish.open && !draftLoading) {
+    clearTimeout(draftTimer);
+    draftTimer = null;
+    saveDraft();
+  }
+});
+window.addEventListener('beforeunload', event => {
+  if (draftTimer || draftPendingWrites || draftSaveFailed || publishBusy) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
 
 function refresh() {
   state = { users: [...shared.users], posts: shared.posts, currentUserId: sessionUser?.id || null };
@@ -84,6 +237,16 @@ function renderAccount() {
       const response = await fetch('/api/logout', { method: 'POST' });
       if (!response.ok) throw new Error('Could not sign out. Please try again.');
       sessionUser = null;
+      draftUserId = null;
+      draftLoading = false;
+      draftRevision++;
+      draftOpenToken++;
+      $('#submit-post').disabled = false;
+      clearTimeout(draftTimer);
+      draftTimer = null;
+      clearPreview();
+      $('#publish-form').reset();
+      draftStatus('');
       window.google?.accounts.id.disableAutoSelect();
       refresh(); notice('Signed out.');
     }
@@ -274,7 +437,10 @@ function showDetail(id) {
 }
 
 function startPublish() {
-  if (sessionUser && state?.currentUserId === sessionUser.id) openDialog(dialogs.publish);
+  if (sessionUser && state?.currentUserId === sessionUser.id) {
+    openDialog(dialogs.publish);
+    loadDraft(sessionUser.id);
+  }
   else {
     pendingLoginAction = 'publish';
     openDialog(dialogs.login);
@@ -317,7 +483,10 @@ async function handleGoogleCredential({ credential }) {
     dialogs.login.close();
     refresh();
     notice('Signed in with Google.');
-    if (next === 'publish') openDialog(dialogs.publish);
+    if (next === 'publish') {
+      openDialog(dialogs.publish);
+      loadDraft(sessionUser.id);
+    }
   } catch (error) { $('#login-error').textContent = error.message; }
 }
 
@@ -332,10 +501,11 @@ $('#publish-button').addEventListener('click', startPublish);
 $('#post-image').addEventListener('change', event => {
   clearPreview();
   const file = event.target.files[0];
-  if (!file) return;
+  if (!file) { scheduleDraftSave(); return; }
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 15 * 1024 * 1024) {
     $('#publish-error').textContent = 'Choose a JPG, PNG, or WebP image up to 15 MB.';
     event.target.value = '';
+    scheduleDraftSave();
     return;
   }
   $('#publish-error').textContent = '';
@@ -343,8 +513,13 @@ $('#post-image').addEventListener('change', event => {
   previewUrl = URL.createObjectURL(file);
   $('#image-preview').src = previewUrl;
   $('#image-preview').hidden = false;
+  scheduleDraftSave();
 });
-$('#post-text').addEventListener('input', event => $('#text-count').textContent = `${event.target.value.length} / 6000`);
+$('#post-text').addEventListener('input', event => {
+  $('#text-count').textContent = `${event.target.value.length} / 6000`;
+  scheduleDraftSave();
+});
+$('#post-city').addEventListener('input', scheduleDraftSave);
 
 async function compressImage(file) {
   const url = URL.createObjectURL(file);
@@ -391,12 +566,27 @@ $('#publish-form').addEventListener('submit', async event => {
     if (!response.ok) throw new Error(result.error || 'Publishing failed.');
     shared.posts.unshift(result.post);
     shared.users = shared.users.filter(user => user.id !== sessionUser.id).concat(sessionUser);
+    clearTimeout(draftTimer);
+    draftTimer = null;
+    draftUserId = null;
+    draftLoading = false;
+    draftRevision++;
+    draftOpenToken++;
+    const publishedUserId = sessionUser.id;
+    memoryDrafts.delete(publishedUserId);
+    draftWarnings.delete(publishedUserId);
+    draftSaveFailed = draftWarnings.size > 0;
+    const pendingDraftWrites = draftWrites;
     $('#publish-form').reset();
     $('#text-count').textContent = '0 / 6000';
     dialogs.publish.close();
     navigate('#/square');
     refresh();
     notice('Your reading is now public.');
+    try {
+      await pendingDraftWrites.catch(() => {});
+      if (draftDb) await draftOperation(draftDb, 'delete', publishedUserId);
+    } catch { notice('Published, but the local draft could not be removed from this device.'); }
   } catch (error) { $('#publish-error').textContent = error.message; }
   finally { button.disabled = false; publishBusy = false; }
 });
