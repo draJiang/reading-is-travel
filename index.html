@@ -13,7 +13,6 @@
     <nav aria-label="Main">
       <a class="wordmark" href="#/square">Reading is Travel</a>
       <a href="#/square" id="square-link">Square</a>
-      <a href="#/map" id="map-link">Map</a>
       <span class="nav-space"></span>
       <span id="account"></span>
       <button id="publish-button" type="button">Share a reading</button>
@@ -24,14 +23,14 @@
 
   <footer>
     <p>Between the pages, there are mountains and rivers. <span aria-hidden="true">↗</span></p>
-    <small>Google sign-in · Shared readings are committed to a public GitHub repository.</small>
+    <small>Google sign-in · Readings are stored on our server · <a href="https://github.com/draJiang/reading-is-travel" target="_blank" rel="noopener noreferrer">Open-source code on GitHub</a>.</small>
   </footer>
   <p id="notice" role="status" aria-live="polite" hidden></p>
 
   <dialog id="login-dialog" aria-labelledby="login-title">
     <div>
       <div class="dialog-heading"><h2 id="login-title">Start a reading trip</h2><button type="button" data-close aria-label="Close login">Close</button></div>
-      <p>Sign in with Google to publish to the public community repository.</p>
+      <p>Sign in with Google to share a reading with the community.</p>
       <div id="google-button"></div>
       <p class="form-error" role="alert" id="login-error"></p>
     </div>
@@ -40,21 +39,24 @@
   <dialog id="publish-dialog" aria-labelledby="publish-title">
     <form id="publish-form">
       <div class="dialog-heading"><h2 id="publish-title">Share a reading</h2><button type="button" data-close aria-label="Close publish">Close</button></div>
-      <p>A person, a place, or a small moment from a book.</p>
-      <label for="post-image">Image <span class="hint">(required)</span></label>
+      <label for="post-image">Image</label>
       <input id="post-image" name="image" type="file" accept="image/jpeg,image/png,image/webp" required>
-      <p class="hint" id="image-hint">JPG, PNG, or WebP up to 15 MB. Images are compressed before saving (longest side ≤ 1440 px).</p>
       <img id="image-preview" alt="Image preview" hidden>
-      <label for="post-text">Text <span class="hint">(required)</span></label>
+      <label for="post-text">Text</label>
       <textarea id="post-text" name="text" rows="6" maxlength="6000" required placeholder="Share who or what you met while reading—or just the title of the book…"></textarea>
       <div class="field-heading"><label for="post-city">Linked city <span class="hint">(optional)</span></label><small id="text-count">0 / 6000</small></div>
       <input id="post-city" name="city" list="city-options" autocomplete="off" placeholder="Search a city, e.g. Paris">
       <datalist id="city-options"></datalist>
-      <p class="hint">Choose a city from the book, where you read, or anywhere related. This prototype includes a sample of cities worldwide.</p>
-      <p class="hint">Publishing commits your text, public display name and image to a public GitHub repository. Deleted content may remain in Git history or forks. Do not share private information.</p>
       <p class="form-error" role="alert" id="publish-error"></p>
       <button type="submit" id="submit-post">Publish</button>
     </form>
+  </dialog>
+
+  <dialog id="publish-confirm-dialog" aria-labelledby="publish-confirm-title">
+    <div class="dialog-heading"><h2 id="publish-confirm-title">Publish this reading?</h2><button type="button" data-close aria-label="Close confirmation">Close</button></div>
+    <p>Your text, display name and image will be publicly visible. Others may copy them even if you delete the post later. Do not upload private information.</p>
+    <p class="form-error" role="alert" id="publish-confirm-error"></p>
+    <div class="actions"><button type="button" id="publish-back">Go back</button><button type="button" id="confirm-publish">Confirm publish</button></div>
   </dialog>
 
   <dialog id="detail-dialog" aria-labelledby="detail-title">
@@ -65,7 +67,7 @@
   <dialog id="delete-dialog" aria-labelledby="delete-title">
     <form id="delete-form">
       <h2 id="delete-title">Delete this reading?</h2>
-      <p>This removes it from the latest public repository version. Git history and forks may still contain it.</p>
+      <p>This removes the reading and its image from our server. Copies made by other people cannot be recalled.</p>
       <p class="form-error" role="alert" id="delete-error"></p>
       <div class="actions"><button type="button" data-close autofocus>Keep</button><button type="submit">Delete</button></div>
     </form>

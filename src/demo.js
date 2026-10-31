@@ -37,3 +37,34 @@ export const demoPosts = [
     image: image('#e6ddd1', '#806957', 'ELSEWHERE / 05', '<path d="M170 225q155-60 305 16v271q-145-76-305-16ZM475 241q150-76 305-16v271q-150-60-305 16ZM475 241v271M207 275q110-24 230 25M207 330q110-24 230 25M514 302q110-48 228-28M514 359q110-48 228-28" fill="none" stroke="#806957" stroke-width="10" stroke-linejoin="round"/>'),
   },
 ];
+
+const samples = [
+  ['lisbon', 'LISBON', '#e9dfd2', '#986d4f', 'A tram crossed the hill while I read about the sea. The story stayed with me longer than the view.', 'lisbon'],
+  ['kyoto', 'KYOTO', '#dce2d6', '#627763', 'One page described a garden after rain. I slowed down at every sentence, as if walking along its stones.', 'kyoto'],
+  ['istanbul', 'ISTANBUL', '#dfdad0', '#705952', 'The ferry in the book arrived at dusk. I closed it and listened for water outside my own window.', 'istanbul'],
+  ['berlin', 'BERLIN', '#e6dfd5', '#776057', 'A character kept a notebook of ordinary streets. It made the walk home feel worth remembering.', 'berlin'],
+  ['rome', 'ROME', '#e5ddd0', '#8b6651', 'Between two chapters, a city appeared in the margins: warm stone, late light, and a quiet square.', 'rome'],
+  ['newyork', 'NEW YORK', '#dce0db', '#526a68', 'I found a stranger reading on a train in the novel. We both missed our stop, at least for a moment.', 'newyork'],
+  ['seoul', 'SEOUL', '#e4dedb', '#7c6269', 'The last chapter began in a small library. I wished I could stay there until the lights went out.', 'seoul'],
+  ['prague', 'PRAGUE', '#e1ddd3', '#746558', 'A bridge appeared only once in the story, but I kept returning to it in my imagination.', 'prague'],
+  ['mumbai', 'MUMBAI', '#e7dfcb', '#887047', 'The novel made room for the sound of a crowded morning. I could almost hear it between the lines.', 'mumbai'],
+  ['cairo', 'CAIRO', '#e9e0d0', '#967652', 'I read about a letter carried across a city. Its destination mattered less than the hands it passed through.', 'cairo'],
+  ['sydney', 'SYDNEY', '#dce3e0', '#567674', 'An ocean filled the chapter without a single map. I turned the page and felt farther from shore.', 'sydney'],
+  ['mexicocity', 'MEXICO CITY', '#e8dbd2', '#935e4c', 'The book mentioned a market at noon. Color and conversation seemed to spill out of the paragraph.', 'mexicocity'],
+  ['amsterdam', 'AMSTERDAM', '#dde2dc', '#5c746a', 'A bicycle leaned against a door in the story. That small detail made the whole street real.', 'amsterdam'],
+  ['bangkok', 'BANGKOK', '#e9dfd0', '#907052', 'Rain interrupted the conversation in the book. For a while, the weather became the narrator.', 'bangkok'],
+  ['shanghai', 'SHANGHAI', '#dce0dc', '#626f6c', 'I read the final page on my way home. The city outside the train had changed without moving at all.', 'shanghai'],
+];
+
+// Extra cards appear only on localhost; none are sent to the storage service.
+demoPosts.push(...samples.map(([slug, label, background, accent, text, cityId], index) => {
+  const number = index + 6;
+  return {
+    id: `demo-post-${number}`,
+    authorId: demoUsers[index % demoUsers.length].id,
+    cityId,
+    createdAt: new Date(Date.UTC(2026, 9, 11 - index, 12, 0)).toISOString(),
+    text,
+    image: image(background, accent, `${label} / ${String(number).padStart(2, '0')}`, '<path d="M112 498h736M175 498V298l130-95 130 95v200M435 498V251l125-100 128 100v247M688 498V315h96v183M235 498v-98h70v98M508 498V357h72v141M160 342h250M472 299h180" fill="none" stroke="' + accent + '" stroke-width="11" stroke-linejoin="round"/>'),
+  };
+}));

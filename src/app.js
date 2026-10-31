@@ -3,7 +3,7 @@ import { demoPosts, demoUsers } from './demo.js';
 
 const $ = selector => document.querySelector(selector);
 const main = $('#main');
-const dialogs = { login: $('#login-dialog'), publish: $('#publish-dialog'), detail: $('#detail-dialog'), delete: $('#delete-dialog') };
+const dialogs = { login: $('#login-dialog'), publish: $('#publish-dialog'), confirm: $('#publish-confirm-dialog'), detail: $('#detail-dialog'), delete: $('#delete-dialog') };
 let state;
 let pendingDelete = null;
 let returnFocus = null;
@@ -12,11 +12,13 @@ let previewUrl = null;
 let lastImage = null;
 let noticeTimer;
 let publishBusy = false;
+let pendingPublish = null;
 let sessionUser = null;
 let googleReady = false;
 let shared = { users: [], posts: [] };
-const visiblePosts = () => [...state.posts, ...demoPosts].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-const visibleUsers = () => [...state.users, ...demoUsers];
+const localDemo = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const visiblePosts = () => [...state.posts, ...(localDemo ? demoPosts : [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+const visibleUsers = () => [...state.users, ...(localDemo ? demoUsers : [])];
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -46,12 +48,16 @@ function openDialog(dialog) {
 
 for (const dialog of Object.values(dialogs)) {
   dialog.addEventListener('click', event => {
-    if (dialog === dialogs.publish && publishBusy) return;
+    if ((dialog === dialogs.publish || dialog === dialogs.confirm) && publishBusy) return;
     if (event.target === dialog || event.target.closest('[data-close]')) dialog.close();
   });
-  dialog.addEventListener('cancel', event => { if (dialog === dialogs.publish && publishBusy) event.preventDefault(); });
+  dialog.addEventListener('cancel', event => { if ((dialog === dialogs.publish || dialog === dialogs.confirm) && publishBusy) event.preventDefault(); });
   dialog.addEventListener('close', () => {
-    if (dialog === dialogs.publish) clearPreview();
+    if (dialog === dialogs.publish && !dialogs.confirm.open && !pendingPublish) clearPreview();
+    if (dialog === dialogs.confirm && !publishBusy && pendingPublish && !dialogs.publish.open) {
+      pendingPublish = null;
+      clearPreview();
+    }
     if (dialog === dialogs.login) pendingLoginAction = null;
     if (returnFocus?.isConnected) returnFocus.focus();
     returnFocus = null;
@@ -106,9 +112,7 @@ function renderRoute() {
   if (!state) return;
   const current = route();
   $('#square-link').removeAttribute('aria-current');
-  $('#map-link').removeAttribute('aria-current');
   if (current.page === 'square') $('#square-link').setAttribute('aria-current', 'page');
-  if (current.page === 'map') $('#map-link').setAttribute('aria-current', 'page');
   if (current.page === 'user') renderUser(current.userId);
   else if (current.page === 'map') renderMap(current.cityId);
   else renderSquare();
@@ -365,18 +369,42 @@ $('#publish-form').addEventListener('submit', async event => {
     const file = $('#post-image').files[0];
     if (!file || file !== lastImage || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 15 * 1024 * 1024) throw new Error('Choose a JPG, PNG, or WebP image up to 15 MB.');
     const image = await compressImage(file);
-    const response = await fetch('/api/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image, text: $('#post-text').value, cityId: city?.id || null }) });
+    pendingPublish = { image, text: $('#post-text').value, cityId: city?.id || null };
+    publishBusy = false;
+    dialogs.publish.close();
+    requestAnimationFrame(() => openDialog(dialogs.confirm));
+  } catch (error) { $('#publish-error').textContent = error.message; }
+  finally { button.disabled = false; publishBusy = false; }
+});
+
+function backToPublish() {
+  pendingPublish = null;
+  dialogs.confirm.close();
+  requestAnimationFrame(() => openDialog(dialogs.publish));
+}
+
+$('#publish-back').addEventListener('click', backToPublish);
+$('#confirm-publish').addEventListener('click', async () => {
+  if (!pendingPublish || publishBusy) return;
+  const button = $('#confirm-publish');
+  publishBusy = true;
+  button.disabled = true;
+  $('#publish-confirm-error').textContent = '';
+  try {
+    const response = await fetch('/api/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pendingPublish) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Publishing failed.');
     shared.posts.unshift(result.post);
     shared.users = shared.users.filter(user => user.id !== sessionUser.id).concat(sessionUser);
+    pendingPublish = null;
     $('#publish-form').reset();
     $('#text-count').textContent = '0 / 6000';
-    dialogs.publish.close();
+    dialogs.confirm.close();
+    clearPreview();
     navigate('#/square');
     refresh();
-    notice('Published to the public GitHub repository.');
-  } catch (error) { $('#publish-error').textContent = error.message; }
+    notice('Your reading is now public.');
+  } catch (error) { $('#publish-confirm-error').textContent = error.message; }
   finally { button.disabled = false; publishBusy = false; }
 });
 
@@ -390,23 +418,28 @@ $('#delete-form').addEventListener('submit', async event => {
     pendingDelete = null;
     dialogs.delete.close();
     refresh();
-    notice('Removed from the latest repository version; Git history may retain it.');
+    notice('Reading removed from our server.');
   } catch (error) { $('#delete-error').textContent = error.message; }
 });
 
 $('#city-options').append(...cities.map(city => el('option', { value: cityLabel(city) })));
 window.addEventListener('hashchange', renderRoute);
-Promise.all(['/api/session', '/api/posts'].map(async url => {
+Promise.all(['/api/session', ...(localDemo ? [] : ['/api/posts'])].map(async url => {
   const response = await fetch(url);
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Could not load the community.');
   return result;
 })).then(([session, posts]) => {
   sessionUser = session.user;
-  shared = posts;
+  if (posts) shared = posts;
   refresh();
 }).catch(error => {
-  main.replaceChildren(empty('Could not load shared readings', error.message));
-  $('#publish-button').disabled = true;
-  notice(error.message);
+  if (localDemo) {
+    refresh();
+    notice(`Local preview is available, but sign-in could not be checked: ${error.message}`);
+  } else {
+    main.replaceChildren(empty('Could not load shared readings', error.message));
+    $('#publish-button').disabled = true;
+    notice(error.message);
+  }
 });

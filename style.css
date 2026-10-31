@@ -3,7 +3,7 @@
 
 body {
   margin: 0;
-  padding: 16px 20px 48px;
+  padding: 20px;
   line-height: 1.5;
   color: #222;
   background: #f6f6ef;
@@ -155,8 +155,10 @@ textarea { min-height: 120px; resize: vertical; }
   max-height: 200px;
   margin-top: 10px;
 }
+#image-preview[hidden] { display: none; }
 .detail-image {
   display: block;
+  max-width: 100%;
   max-height: 58vh;
   width: auto;
   height: auto;
@@ -213,7 +215,7 @@ footer small { color: #888; }
   .posts { column-count: 2; }
 }
 @media (max-width: 520px) {
-  body { padding: 12px 12px 40px; }
+  body { padding: 12px; }
   .posts { column-count: 1; }
   .nav-space { display: none; }
   #publish-button { width: 100%; }

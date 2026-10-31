@@ -1,6 +1,6 @@
 import { verifyGoogleToken } from './auth.js';
 import { createSession, getSession, sessionCookie, expiredCookie } from './session.js';
-import { listPosts, publishPost, deletePost, readImage } from './github.js';
+import { listPosts, publishPost, deletePost, readImage } from './storage-client.js';
 import { createHash } from 'node:crypto';
 
 function send(res, status, data, extra = {}) {
@@ -33,7 +33,7 @@ export async function handleApi(req, res) {
     else if (req.method === 'GET' && pathname.startsWith('/api/images/')) {
       const image = await readImage(pathname.slice('/api/images/'.length));
       if (!image) send(res, 404, { error: 'Image not found.' });
-      else { res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=300', 'X-Content-Type-Options': 'nosniff' }); res.end(image); }
+      else { res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(image); }
     } else if (req.method === 'POST' && pathname === '/api/auth/google') {
       if (!sameOrigin(req)) return send(res, 403, { error: 'Invalid request origin.' });
       if (!process.env.GOOGLE_CLIENT_ID) return send(res, 503, { error: 'Google login is not configured.' });
@@ -57,8 +57,9 @@ export async function handleApi(req, res) {
       send(res, 200, { ok: true });
     } else send(res, 404, { error: 'Not found.' });
   } catch (error) {
-    const safe = /^(Invalid|Enter |Pick |Choose |Request |This post|You can only|Sign in|Google |GitHub |GITHUB_TOKEN|SESSION_SECRET)/.test(error.message);
-    send(res, /GitHub storage|not configured|SESSION_SECRET/.test(error.message) ? 503 : 400, { error: safe ? error.message : 'Request failed. Please try again.' });
+    const safe = /^(Invalid|Enter |Pick |Choose |Request |This post|You can only|Sign in|Google |Storage |STORAGE_|SESSION_SECRET)/.test(error.message);
+    const unavailable = /Storage service|not configured|STORAGE_|SESSION_SECRET/.test(error.message);
+    send(res, unavailable ? 503 : (error.status || 400), { error: safe ? error.message : 'Request failed. Please try again.' });
   }
   return true;
 }

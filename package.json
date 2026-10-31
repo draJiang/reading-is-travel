@@ -5,6 +5,10 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test",
-    "check": "node --check src/app.js && node --check src/api.js && node --check src/github.js && node --check src/auth.js && node --check src/session.js && node --check server.mjs"
+    "check": "node --check src/app.js && node --check src/api.js && node --check src/storage-client.js && node --check src/storage-auth.js && node --check src/vps-storage.js && node --check storage-server.mjs && node --check src/session.js && node --check server.mjs",
+    "start:storage": "node --experimental-sqlite --disable-warning=ExperimentalWarning storage-server.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }
