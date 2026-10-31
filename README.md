@@ -15,3 +15,16 @@ Redeploy after changing environment variables. Vercel serves static files and ru
 For local development, use Node.js 18+ and export the same environment variables (never commit a `.env` file), then run `npm start`. Open `http://127.0.0.1:3000`, and authorize that origin in Google Cloud. Run `npm test` and `npm run check` for verification.
 
 Existing posts in browser `localStorage` are **not migrated automatically**. Demo posts are fictional and are not committed. The map is approximate; nearby markers may overlap.
+
+## Deleting public content and Git history
+
+The site's Delete button removes the post JSON and image from the **current branch only**. Earlier commits, forks, clones, caches, archives and copies made by other people may still contain both files. A public Git repository cannot promise complete erasure after publication; do not tell users that Delete permanently destroys their content.
+
+If a post must be removed from this repository's reachable history, an administrator can:
+
+1. Immediately remove the post from the live branch with the normal Delete action. Note its post ID and both paths: `content/posts/<id>.json` and `content/images/<id>.jpg`. Stop new writes during cleanup and make a secure backup of the repository first.
+2. On a fresh local clone, use a current `git-filter-repo` to remove **both exact paths from all refs** (branches and tags). Inspect the rewritten history and verify the paths are no longer reachable. This rewrites commit hashes for everyone; coordinate with collaborators and Vercel before force-pushing rewritten refs. Do not run history-rewrite commands against a dirty working tree.
+3. Force-push the rewritten refs only after reviewing what will change. Ask collaborators to discard old clones or reclone; remove old branches, tags, pull-request refs and backups under your control that retain the original objects. Redeploy the rewritten revision and clear application/CDN caches under your control.
+4. Follow GitHub's current sensitive-data removal guidance or contact GitHub Support when cached views or pull-request references still expose the data. GitHub garbage collection and cache invalidation are not fully controlled by this app; forks, external mirrors and downloaded copies cannot be recalled.
+
+This is an exceptional **administrator procedure**, not something the API can safely do for each user deletion: rewriting history concurrently with new posts risks lost writes, breaks commit links and disrupts contributors. If reliable user-controlled permanent deletion is a product requirement, move user text and images to storage with real deletion semantics and keep only non-sensitive, explicitly archival material in Git. Even then, backups and third-party copies need a documented retention policy.

@@ -61,18 +61,17 @@ main { min-height: 40vh; padding: 8px 0 40px; }
   font-size: 0.9rem;
 }
 
-/* auto-fit collapses empty tracks so cards stretch into leftover width */
+/* Columns stack whole cards vertically without leaving grid-row gaps. */
 .posts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
-  align-items: start;
-}
-@supports (grid-template-rows: masonry) {
-  .posts { grid-template-rows: masonry; }
+  column-count: 4;
+  column-gap: 12px;
 }
 .post {
+  display: inline-block;
+  width: 100%;
   min-width: 0;
+  margin-bottom: 12px;
+  break-inside: avoid;
 }
 .post-card {
   border: 1px solid #ccc;
@@ -207,9 +206,15 @@ footer {
 footer p { margin: 0 0 4px; }
 footer small { color: #888; }
 
+@media (max-width: 1050px) {
+  .posts { column-count: 3; }
+}
+@media (max-width: 760px) {
+  .posts { column-count: 2; }
+}
 @media (max-width: 520px) {
   body { padding: 12px 12px 40px; }
-  .posts { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .posts { column-count: 1; }
   .nav-space { display: none; }
   #publish-button { width: 100%; }
   dialog { padding: 14px; }
