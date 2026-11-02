@@ -1,6 +1,6 @@
 import { verifyGoogleToken } from './auth.js';
 import { createSession, getSession, sessionCookie, expiredCookie } from './session.js';
-import { listPosts, publishPost, deletePost, readImage } from './storage-client.js';
+import { listPosts, publishPost, updatePost, deletePost, readImage } from './storage-client.js';
 import { createHash } from 'node:crypto';
 
 function send(res, status, data, extra = {}) {
@@ -49,6 +49,11 @@ export async function handleApi(req, res) {
       const user = getSession(req)?.user;
       if (!user) return send(res, 401, { error: 'Sign in with Google before publishing.' });
       send(res, 201, { post: await publishPost(user, await body(req)) });
+    } else if (req.method === 'PUT' && pathname.startsWith('/api/posts/')) {
+      if (!sameOrigin(req)) return send(res, 403, { error: 'Invalid request origin.' });
+      const user = getSession(req)?.user;
+      if (!user) return send(res, 401, { error: 'Sign in with Google before editing.' });
+      send(res, 200, { post: await updatePost(user, pathname.slice('/api/posts/'.length), await body(req)) });
     } else if (req.method === 'DELETE' && pathname.startsWith('/api/posts/')) {
       if (!sameOrigin(req)) return send(res, 403, { error: 'Invalid request origin.' });
       const user = getSession(req)?.user;

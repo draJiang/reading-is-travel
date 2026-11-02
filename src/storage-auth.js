@@ -20,7 +20,7 @@ export function verifyStorageRequest(req, path, body = Buffer.alloc(0), now = Da
   if (typeof timestamp !== 'string' || !/^\d{13}$/.test(timestamp) || Math.abs(now - Number(timestamp)) > windowMs || typeof provided !== 'string' || !/^[a-f0-9]{64}$/.test(provided)) return false;
   const expected = storageSignature(req.method, path, timestamp, body);
   if (!timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(expected, 'hex'))) return false;
-  if (req.method === 'POST' || req.method === 'DELETE') {
+  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
     for (const [key, expiry] of seen) if (expiry <= now) seen.delete(key);
     if (seen.has(provided)) return false;
     seen.set(provided, now + windowMs);

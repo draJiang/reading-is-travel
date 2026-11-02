@@ -56,6 +56,21 @@
     <article id="detail-content"></article>
   </dialog>
 
+  <dialog id="edit-dialog" aria-labelledby="edit-title">
+    <form id="edit-form">
+      <div class="dialog-heading"><h2 id="edit-title">Edit my reading</h2><button type="button" data-close aria-label="Close edit">Close</button></div>
+      <label for="edit-image">Replace image <span class="hint">(optional; leave blank to keep the current image)</span></label>
+      <input id="edit-image" name="image" type="file" accept="image/jpeg,image/png,image/webp">
+      <img id="edit-image-preview" class="edit-image-preview" alt="Reading image preview">
+      <label for="edit-text">Text</label>
+      <textarea id="edit-text" name="text" rows="6" maxlength="6000" required></textarea>
+      <div class="field-heading"><label for="edit-city">Linked city <span class="hint">(optional)</span></label><small id="edit-text-count">0 / 6000</small></div>
+      <input id="edit-city" name="city" list="city-options" autocomplete="off" placeholder="Search a city, e.g. Paris">
+      <p class="form-error" role="alert" id="edit-error"></p>
+      <div class="actions"><button type="button" data-close>Cancel</button><button type="submit" id="save-edit">Save changes</button></div>
+    </form>
+  </dialog>
+
   <dialog id="delete-dialog" aria-labelledby="delete-title">
     <form id="delete-form">
       <h2 id="delete-title">Delete this reading?</h2>

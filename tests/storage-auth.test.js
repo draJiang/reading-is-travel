@@ -13,4 +13,8 @@ test('storage service verifies body, timestamp, signature, and replayed writes',
   assert.equal(verifyStorageRequest(req, path, Buffer.from('{}'), now), false);
   assert.equal(verifyStorageRequest(req, path, body, now + 180000), false);
   assert.equal(verifyStorageRequest({ ...req, method: 'DELETE' }, path, body, now), false);
+  const putPath = '/posts/00000000-0000-0000-0000-000000000000';
+  const put = { method: 'PUT', headers: { 'x-storage-timestamp': String(now), 'x-storage-signature': storageSignature('PUT', putPath, now, body) } };
+  assert.equal(verifyStorageRequest(put, putPath, body, now), true);
+  assert.equal(verifyStorageRequest(put, putPath, body, now), false);
 });

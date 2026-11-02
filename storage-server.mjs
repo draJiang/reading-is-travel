@@ -36,6 +36,7 @@ createServer(async (req, res) => {
       catch { return json(res, 400, { error: 'Invalid JSON request.' }); }
     }
     if (req.method === 'POST' && path === '/posts') return json(res, 201, { post: store.publishPost(body.user, body.data) });
+    if (req.method === 'PUT' && path.startsWith('/posts/')) return json(res, 200, { post: store.updatePost(body.user, path.slice('/posts/'.length), body.data) });
     if (req.method === 'DELETE' && path.startsWith('/posts/')) {
       store.deletePost(body.user, path.slice('/posts/'.length));
       return json(res, 200, { ok: true });

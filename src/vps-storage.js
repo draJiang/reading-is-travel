@@ -27,10 +27,18 @@ export function createStorage(directory) {
     CREATE INDEX IF NOT EXISTS posts_created_at ON posts(created_at DESC);`);
   const all = db.prepare('SELECT id, author_id, author_name, text, city_id, created_at FROM posts ORDER BY created_at DESC, id DESC');
   const insert = db.prepare('INSERT INTO posts (id, author_id, author_name, text, city_id, created_at) VALUES (?, ?, ?, ?, ?, ?)');
-  const find = db.prepare('SELECT author_id FROM posts WHERE id = ?');
+  const find = db.prepare('SELECT id, author_id, text, city_id, created_at FROM posts WHERE id = ?');
+  const update = db.prepare('UPDATE posts SET text = ?, city_id = ? WHERE id = ? AND author_id = ?');
   const remove = db.prepare('DELETE FROM posts WHERE id = ? AND author_id = ?');
   const imageFile = id => path.join(images, `${id}.jpg`);
   const toPost = row => ({ id: row.id, authorId: row.author_id, text: row.text, cityId: row.city_id, createdAt: row.created_at, image: `/api/images/${row.id}` });
+  function imageBytes(image) {
+    const match = typeof image === 'string' && image.length <= 700000 && image.match(imagePattern);
+    if (!match) invalid('Choose a usable compressed JPEG image.');
+    const bytes = Buffer.from(match[1], 'base64');
+    if (!bytes.length || bytes.length > 525000 || bytes.toString('base64') !== match[1] || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes.at(-2) !== 0xff || bytes.at(-1) !== 0xd9) invalid('Choose a usable compressed JPEG image.');
+    return bytes;
+  }
 
   return {
     listPosts() {
@@ -42,10 +50,7 @@ export function createStorage(directory) {
       const { text, image, cityId = null } = data || {};
       if (typeof text !== 'string' || !text.trim() || text.trim().length > 6000) invalid('Enter between 1 and 6000 characters of text.');
       if (cityId !== null && !getCity(cityId)) invalid('Pick a city from the list, or clear the location.');
-      const match = typeof image === 'string' && image.length <= 700000 && image.match(imagePattern);
-      if (!match) invalid('Choose a usable compressed JPEG image.');
-      const bytes = Buffer.from(match[1], 'base64');
-      if (!bytes.length || bytes.length > 525000 || bytes.toString('base64') !== match[1] || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes.at(-2) !== 0xff || bytes.at(-1) !== 0xd9) invalid('Choose a usable compressed JPEG image.');
+      const bytes = imageBytes(image);
       const id = randomUUID();
       const createdAt = new Date().toISOString();
       const temp = path.join(images, `.${id}.tmp`);
@@ -60,6 +65,36 @@ export function createStorage(directory) {
         throw error;
       }
       return { id, authorId: user.id, text: text.trim(), cityId, createdAt, image: `/api/images/${id}` };
+    },
+    updatePost(user, id, data) {
+      validUser(user);
+      if (!idPattern.test(id)) invalid('Invalid reading ID.');
+      const post = find.get(id);
+      if (!post) invalid('This post no longer exists.', 404);
+      if (post.author_id !== user.id) invalid('You can only edit your own posts.', 403);
+      const { text, cityId = null, image } = data || {};
+      if (typeof text !== 'string' || !text.trim() || text.trim().length > 6000) invalid('Enter between 1 and 6000 characters of text.');
+      if (cityId !== null && !getCity(cityId)) invalid('Pick a city from the list, or clear the location.');
+      if (image !== undefined && image !== null) {
+        const bytes = imageBytes(image);
+        const original = readFileSync(imageFile(id));
+        const temp = path.join(images, `.${id}.tmp`);
+        let replaced = false;
+        try {
+          writeFileSync(temp, bytes, { flag: 'wx', mode: 0o600 });
+          renameSync(temp, imageFile(id));
+          replaced = true;
+          update.run(text.trim(), cityId, id, user.id);
+        } catch (error) {
+          if (replaced) {
+            try { writeFileSync(imageFile(id), original); }
+            catch (restoreError) { error.cause = restoreError; }
+          }
+          try { unlinkSync(temp); } catch { /* Temporary file may already be renamed. */ }
+          throw error;
+        }
+      } else update.run(text.trim(), cityId, id, user.id);
+      return toPost({ ...post, text: text.trim(), city_id: cityId });
     },
     deletePost(user, id) {
       validUser(user);

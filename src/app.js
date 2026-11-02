@@ -5,9 +5,12 @@ import { openDrafts, draftOperation } from './draft.js';
 
 const $ = selector => document.querySelector(selector);
 const main = $('#main');
-const dialogs = { login: $('#login-dialog'), publish: $('#publish-dialog'), detail: $('#detail-dialog'), delete: $('#delete-dialog') };
+const dialogs = { login: $('#login-dialog'), publish: $('#publish-dialog'), detail: $('#detail-dialog'), edit: $('#edit-dialog'), delete: $('#delete-dialog') };
 let state;
 let pendingDelete = null;
+let editingPostId = null;
+let editBusy = false;
+let editPreviewUrl = null;
 let returnFocus = null;
 let pendingLoginAction = null;
 let previewUrl = null;
@@ -174,9 +177,12 @@ async function loadDraft(userId) {
 for (const dialog of Object.values(dialogs)) {
   dialog.addEventListener('click', event => {
     if (dialog === dialogs.publish && publishBusy) return;
+    if (dialog === dialogs.edit && editBusy) return;
     if (event.target === dialog || event.target.closest('[data-close]')) dialog.close();
   });
-  dialog.addEventListener('cancel', event => { if (dialog === dialogs.publish && publishBusy) event.preventDefault(); });
+  dialog.addEventListener('cancel', event => {
+    if ((dialog === dialogs.publish && publishBusy) || (dialog === dialogs.edit && editBusy)) event.preventDefault();
+  });
   dialog.addEventListener('close', () => {
     if (dialog === dialogs.publish) {
       clearTimeout(draftTimer);
@@ -186,9 +192,16 @@ for (const dialog of Object.values(dialogs)) {
       draftRevision++;
       draftOpenToken++;
       $('#submit-post').disabled = false;
+      $('#submit-post').textContent = 'Publish';
       clearPreview();
     }
     if (dialog === dialogs.login) pendingLoginAction = null;
+    if (dialog === dialogs.edit) {
+      editingPostId = null;
+      if (editPreviewUrl) URL.revokeObjectURL(editPreviewUrl);
+      editPreviewUrl = null;
+      $('#edit-form').reset();
+    }
     if (returnFocus?.isConnected) returnFocus.focus();
     returnFocus = null;
   });
@@ -207,7 +220,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 window.addEventListener('beforeunload', event => {
-  if (draftTimer || draftPendingWrites || draftSaveFailed || publishBusy) {
+  if (draftTimer || draftPendingWrites || draftSaveFailed || publishBusy || editBusy) {
     event.preventDefault();
     event.returnValue = '';
   }
@@ -424,6 +437,11 @@ function showDetail(id) {
   const article = $('#detail-content');
   article.replaceChildren(el('img', { className: 'detail-image', src: post.image, alt: 'Uploaded reading image', width: '480' }), el('p', { className: 'detail-text', text: post.text }), meta);
   if (post.authorId === state.currentUserId) {
+    const edit = el('button', { type: 'button', text: 'Edit my reading' });
+    edit.addEventListener('click', () => {
+      dialogs.detail.close();
+      requestAnimationFrame(() => startEdit(post.id));
+    });
     const remove = el('button', { type: 'button', text: 'Delete my reading' });
     remove.addEventListener('click', () => {
       dialogs.detail.close();
@@ -431,10 +449,66 @@ function showDetail(id) {
       $('#delete-error').textContent = '';
       requestAnimationFrame(() => openDialog(dialogs.delete));
     });
-    article.append(el('div', { className: 'actions' }, remove));
+    article.append(el('div', { className: 'actions' }, edit, remove));
   }
   openDialog(dialogs.detail);
 }
+
+function startEdit(id) {
+  const post = state.posts.find(item => item.id === id && item.authorId === sessionUser?.id);
+  if (!post) return notice('This reading is no longer available to edit.');
+  editingPostId = id;
+  $('#edit-form').reset();
+  $('#edit-image-preview').src = post.image;
+  $('#edit-text').value = post.text;
+  $('#edit-city').value = post.cityId ? cityLabel(getCity(post.cityId)) : '';
+  $('#edit-text-count').textContent = `${post.text.length} / 6000`;
+  $('#edit-error').textContent = '';
+  openDialog(dialogs.edit);
+}
+
+$('#edit-image').addEventListener('change', event => {
+  if (editPreviewUrl) URL.revokeObjectURL(editPreviewUrl);
+  editPreviewUrl = null;
+  const file = event.target.files[0];
+  if (file) {
+    editPreviewUrl = URL.createObjectURL(file);
+    $('#edit-image-preview').src = editPreviewUrl;
+  } else {
+    const post = state.posts.find(item => item.id === editingPostId);
+    if (post) $('#edit-image-preview').src = post.image;
+  }
+});
+$('#edit-text').addEventListener('input', event => $('#edit-text-count').textContent = `${event.target.value.length} / 6000`);
+
+$('#edit-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (editBusy || !editingPostId) return;
+  const button = $('#save-edit');
+  editBusy = true;
+  button.disabled = true;
+  $('#edit-error').textContent = '';
+  try {
+    const cityValue = $('#edit-city').value.trim();
+    const city = cityValue ? findCity(cityValue) : null;
+    if (cityValue && !city) throw new Error('Pick a city from the list, or leave the city blank.');
+    const data = { text: $('#edit-text').value, cityId: city?.id || null };
+    const file = $('#edit-image').files[0];
+    if (file) {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 15 * 1024 * 1024) throw new Error('Choose a JPG, PNG, or WebP image up to 15 MB.');
+      data.image = await compressImage(file);
+    }
+    const id = editingPostId;
+    const response = await fetch(`/api/posts/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Editing failed.');
+    shared.posts = shared.posts.map(post => post.id === id ? result.post : post);
+    dialogs.edit.close();
+    refresh();
+    notice('Your reading has been updated.');
+  } catch (error) { $('#edit-error').textContent = error.message; }
+  finally { editBusy = false; button.disabled = false; }
+});
 
 function startPublish() {
   if (sessionUser && state?.currentUserId === sessionUser.id) {
@@ -552,6 +626,7 @@ $('#publish-form').addEventListener('submit', async event => {
   const button = $('#submit-post');
   if (button.disabled) return;
   button.disabled = true;
+  button.textContent = 'Publishing...';
   publishBusy = true;
   $('#publish-error').textContent = '';
   try {
@@ -588,7 +663,7 @@ $('#publish-form').addEventListener('submit', async event => {
       if (draftDb) await draftOperation(draftDb, 'delete', publishedUserId);
     } catch { notice('Published, but the local draft could not be removed from this device.'); }
   } catch (error) { $('#publish-error').textContent = error.message; }
-  finally { button.disabled = false; publishBusy = false; }
+  finally { button.disabled = false; button.textContent = 'Publish'; publishBusy = false; }
 });
 
 $('#delete-form').addEventListener('submit', async event => {

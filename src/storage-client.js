@@ -38,6 +38,7 @@ async function request(path, method = 'GET', payload) {
 
 export const listPosts = () => request('/posts');
 export const publishPost = (user, data) => request('/posts', 'POST', { user, data }).then(result => result.post);
+export const updatePost = (user, id, data) => request(`/posts/${encodeURIComponent(id)}`, 'PUT', { user, data }).then(result => result.post);
 export const deletePost = (user, id) => request(`/posts/${encodeURIComponent(id)}`, 'DELETE', { user });
 export async function readImage(id) {
   try { return await request(`/images/${encodeURIComponent(id)}`); }
